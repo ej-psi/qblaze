@@ -907,6 +907,63 @@ static Py_ssize_t decode_complex_buffer(PyObject *arg, Py_buffer *buf, bool writ
 	return -1;
 }
 
+static Py_ssize_t decode_uint64_buffer(PyObject *arg, Py_buffer *buf, bool writable) {
+	int flags = (writable ? PyBUF_WRITABLE : 0) | PyBUF_FORMAT | PyBUF_ND;
+	int r = PyObject_GetBuffer(arg, buf, flags);
+	if (r < 0) return -1;
+	if (writable && buf->readonly) {
+		PyBuffer_Release(buf);
+		PyErr_SetString(PyExc_TypeError, "Expected mutable buffer");
+		return -1;
+	}
+	if (!PyBuffer_IsContiguous(buf, 'C')) {
+		PyBuffer_Release(buf);
+		PyErr_SetString(PyExc_TypeError, "Expected C-contiguous buffer");
+		return -1;
+	}
+	if (!buf->format) {
+		Py_FatalError("Requested buffer with PyBUF_FORMAT but format not set");
+	}
+
+	Py_ssize_t n;
+	if (!strcmp(buf->format, "L")) {
+		if (buf->itemsize != sizeof(uint64_t)) {
+			Py_FatalError("Buffer of uint64 has the wrong item size");
+		}
+		if (buf->ndim != 1) {
+			PyBuffer_Release(buf);
+			PyErr_SetString(PyExc_TypeError, "Buffer of uint64 must be one-dimensional");
+			return -1;
+		}
+		return buf->shape[0];
+	}
+	PyBuffer_Release(buf);
+	PyErr_Format(PyExc_TypeError, "Expected buffer of uint64, got %s", buf->format);
+	return -1;
+}
+
+static Py_ssize_t decode_sparse_buffers(PyObject *arg, Py_buffer *index_buf, Py_buffer *amp_buf, bool writable) {
+	if (!PyList_Check(arg) || PyList_Size(arg) != 2)
+	{
+		PyErr_SetString(PyExc_TypeError, "Expected sparse list of format [[indices], [amps]]");
+		return -1;
+	}
+	PyObject *index_arg = PyList_GetItemRef(arg, 0);
+	PyObject *amp_arg = PyList_GetItemRef(arg, 1);
+	Py_ssize_t index_len = decode_uint64_buffer(index_arg, index_buf, writable);
+	Py_ssize_t amp_len = decode_complex_buffer(amp_arg, amp_buf, writable);
+	if (index_len < 0 || amp_len < 0)
+		return -1;
+	if (index_len != amp_len)
+	{
+		PyErr_SetString(PyExc_TypeError, "Index and amp buffer lengths differ.");
+		PyBuffer_Release(index_buf);
+		PyBuffer_Release(amp_buf);
+		return -1;
+	}
+	return index_len;
+}
+
 static PyObject *Simulator_copy_amplitudes(PyObject *o, PyObject *arg) {
 	SimulatorObject *self = (SimulatorObject*)o;
 	Py_buffer buf;
@@ -927,6 +984,20 @@ static PyObject *Simulator_import_amplitudes(PyObject *o, PyObject *arg) {
 	int r;
 	DO_SLOW(r, qblaze_import_amplitudes, buf.buf, n);
 	PyBuffer_Release(&buf);
+	if(r < 0) return NULL;
+	Py_RETURN_NONE;
+}
+
+static PyObject *Simulator_import_amplitudes_sparse(PyObject *o, PyObject *arg) {
+	SimulatorObject *self = (SimulatorObject*)o;
+	Py_buffer index_buf;
+	Py_buffer amp_buf;
+	Py_ssize_t n = decode_sparse_buffers(arg, &index_buf, &amp_buf, false);
+	if (n < 0) return NULL;
+	int r;
+	DO_SLOW(r, qblaze_import_amplitudes, amp_buf.buf, n);
+	PyBuffer_Release(&index_buf);
+	PyBuffer_Release(&amp_buf);
 	if(r < 0) return NULL;
 	Py_RETURN_NONE;
 }
@@ -989,6 +1060,7 @@ static PyMethodDef Simulator_methods[] = {
 
 	meth_O(copy_amplitudes),
 	meth_O(import_amplitudes),
+	meth_O(import_amplitudes_sparse),
 	meth_NOARGS(state_len),
 
 	meth_NOARGS(_perf),

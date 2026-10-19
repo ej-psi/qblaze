@@ -23,3 +23,14 @@ def test_import(n, values):
     sim = qblaze.Simulator()
     sim.import_amplitudes(state)
     assert list(sim) == values
+
+@pytest.mark.parametrize("n, values", TESTS)
+def test_import(n, values):
+    index_buf = numpy.zeros(len(values), dtype=numpy.uint64)
+    amp_buf = numpy.zeros(len(values), dtype=numpy.complex128)
+    for index,(i, v) in enumerate(values):
+        index_buf[index] = i
+        amp_buf[index] = v
+    sim = qblaze.Simulator()
+    sim.import_amplitudes_sparse([index_buf, amp_buf])
+    assert list(sim) == values

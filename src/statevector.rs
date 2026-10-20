@@ -39,6 +39,7 @@ pub trait Statevector: Send + Sync {
     fn export<'a>(&'a self) -> ExportSlice<'a>;
     fn import(&mut self, ctx: &mut Context, data: ExportSlice);
     fn import_dense(&mut self, ctx: &mut Context, data: &[Complex]);
+    fn import_sparse(&mut self, ctx: &mut Context, index_data: &[u64], amp_data: &[Complex]);
     fn trim(&mut self);
     fn dyn_clone(&self, ctx: &mut Context) -> Box<dyn Statevector>;
 }
@@ -859,6 +860,45 @@ impl<const N: usize> Statevector for StatevectorImpl<N> {
             });
         });
 
+        unsafe {
+            self.set_state(w.finish());
+        }
+        self.partitioned_by = None;
+    }
+
+    fn import_sparse(&mut self, ctx: &mut Context, index_data: &[u64], amp_data: &[Complex]) {
+        const CHUNK_SIZE: usize = 1 << 12;
+        let want_val = |v: &Complex| v.norm_inf() >= Complex::EPS;
+
+        let lens = ctx.pool.borrow().map(amp_data.chunks(CHUNK_SIZE), #[inline(always)] move |chunk| {
+            chunk.iter().copied().filter(want_val).count()
+        });
+
+        let Ok(mut w) = BufWriter::<_, 2>::reserve_chunks(
+            mem::take(&mut self.old_buf),
+            |i| if i == 0 { &lens[..] } else { &[] }.iter().copied(),
+        ) else {
+            return self.clear();
+        };
+        let [out, _] = w.start();
+
+        ctx.pool.borrow().scope(|sc| {
+            sc.for_each(out.into_iter().enumerate(), move |(chunk_i, mut chunk)| {
+                let start = chunk_i * CHUNK_SIZE;
+                let chunk_index_data = &index_data[start..(start + CHUNK_SIZE).min(index_data.len())];
+                let chunk_amp_data = &amp_data[start..(start + CHUNK_SIZE).min(amp_data.len())];
+                for (src_i, val) in chunk_amp_data.iter().enumerate() {
+                    if !want_val(val) {
+                        continue;
+                    }
+                    unsafe { chunk.push_unchecked(sfree::Element {
+                        bits: BitSet::from_index(start +  (chunk_index_data[src_i] as usize)),
+                        val: *val,
+                    }) };
+                }
+            });
+        });
+    
         unsafe {
             self.set_state(w.finish());
         }

@@ -995,7 +995,7 @@ static PyObject *Simulator_import_amplitudes_sparse(PyObject *o, PyObject *arg) 
 	Py_ssize_t n = decode_sparse_buffers(arg, &index_buf, &amp_buf, false);
 	if (n < 0) return NULL;
 	int r;
-	DO_SLOW(r, qblaze_import_amplitudes, amp_buf.buf, n);
+	DO_SLOW(r, qblaze_import_amplitudes_sparse, index_buf.buf, amp_buf.buf, n);
 	PyBuffer_Release(&index_buf);
 	PyBuffer_Release(&amp_buf);
 	if(r < 0) return NULL;

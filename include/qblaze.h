@@ -228,6 +228,15 @@ int qblaze_copy_amplitudes(QBlazeSimulator *sim, QBlazeComplex *buffer, size_t l
  */
 int qblaze_import_amplitudes(QBlazeSimulator *sim, const QBlazeComplex *buffer, size_t length);
 
+/**
+ * Import the state vector amplitudes from 'index_buffer' and 'amp_buffer', which is of
+ * length 'length'.  Any existing state is discarded.
+ *
+ * The 'i'th element of amp_buffer is imported as the amplitude of basis state
+ * corresponding to the 'i'th element of index_buffer'
+ */
+int qblaze_import_amplitudes_sparse(QBlazeSimulator *sim, const uint64_t *index_buffer, const QBlazeComplex *amp_buffer, size_t length);
+
 /** */
 char *_qblaze_perf(QBlazeSimulator *sim);
 

@@ -907,7 +907,7 @@ static Py_ssize_t decode_complex_buffer(PyObject *arg, Py_buffer *buf, bool writ
 	return -1;
 }
 
-static Py_ssize_t decode_uint64_buffer(PyObject *arg, Py_buffer *buf, bool writable) {
+static Py_ssize_t decode_uint64_buffer(PyObject *arg, Py_buffer *buf, bool writable, int* index_buffer_depth) {
 	int flags = (writable ? PyBUF_WRITABLE : 0) | PyBUF_FORMAT | PyBUF_ND;
 	int r = PyObject_GetBuffer(arg, buf, flags);
 	if (r < 0) return -1;
@@ -930,19 +930,29 @@ static Py_ssize_t decode_uint64_buffer(PyObject *arg, Py_buffer *buf, bool writa
 		if (buf->itemsize != sizeof(uint64_t)) {
 			Py_FatalError("Buffer of uint64 has the wrong item size");
 		}
-		if (buf->ndim != 1) {
+		if (buf->ndim != 1 && buf->ndim != 2) {
+			PyBuffer_Release(buf);
+			PyErr_SetString(PyExc_TypeError, "Buffer of uint64 must be one- or two-dimensional");
+			return -1;
+		}
+		if (buf->ndim == 1) {
+			*index_buffer_depth = 1;
+			return buf->shape[0];
+		} else if (buf->ndim == 2) {
+			*index_buffer_depth = buf->shape[0];
+			return buf->shape[1];
+		} else {
 			PyBuffer_Release(buf);
 			PyErr_SetString(PyExc_TypeError, "Buffer of uint64 must be one-dimensional");
 			return -1;
 		}
-		return buf->shape[0];
 	}
 	PyBuffer_Release(buf);
 	PyErr_Format(PyExc_TypeError, "Expected buffer of uint64, got %s", buf->format);
 	return -1;
 }
 
-static Py_ssize_t decode_sparse_buffers(PyObject *arg, Py_buffer *index_buf, Py_buffer *amp_buf, bool writable) {
+static Py_ssize_t decode_sparse_buffers(PyObject *arg, Py_buffer *index_buf, Py_buffer *amp_buf, bool writable, int* index_buffer_depth) {
 	if (!PyList_Check(arg) || PyList_Size(arg) != 2)
 	{
 		PyErr_SetString(PyExc_TypeError, "Expected sparse list of format [[indices], [amps]]");
@@ -950,7 +960,7 @@ static Py_ssize_t decode_sparse_buffers(PyObject *arg, Py_buffer *index_buf, Py_
 	}
 	PyObject *index_arg = PyList_GetItemRef(arg, 0);
 	PyObject *amp_arg = PyList_GetItemRef(arg, 1);
-	Py_ssize_t index_len = decode_uint64_buffer(index_arg, index_buf, writable);
+	Py_ssize_t index_len = decode_uint64_buffer(index_arg, index_buf, writable, index_buffer_depth);
 	Py_ssize_t amp_len = decode_complex_buffer(amp_arg, amp_buf, writable);
 	if (index_len < 0 || amp_len < 0)
 		return -1;
@@ -992,7 +1002,8 @@ static PyObject *Simulator_import_amplitudes_sparse(PyObject *o, PyObject *arg) 
 	SimulatorObject *self = (SimulatorObject*)o;
 	Py_buffer index_buf;
 	Py_buffer amp_buf;
-	Py_ssize_t n = decode_sparse_buffers(arg, &index_buf, &amp_buf, false);
+	int index_buffer_depth = 1;
+	Py_ssize_t n = decode_sparse_buffers(arg, &index_buf, &amp_buf, false, &index_buffer_depth);
 	if (n < 0) return NULL;
 	int r;
 	DO_SLOW(r, qblaze_import_amplitudes_sparse, index_buf.buf, amp_buf.buf, n);

@@ -287,12 +287,12 @@ pub unsafe extern "C" fn qblaze_import_amplitudes(sim: *mut QBlazeSimulator, buf
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qblaze_import_amplitudes_sparse(sim: *mut QBlazeSimulator, index_buffer: *const u64, amp_buffer: *const QBlazeComplex, length: libc::size_t) -> libc::c_int {
+pub unsafe extern "C" fn qblaze_import_amplitudes_sparse(sim: *mut QBlazeSimulator, index_buffer: *const u64, amp_buffer: *const QBlazeComplex, length: libc::size_t, index_buffer_depth: libc::size_t) -> libc::c_int {
     if length == 0 {
         return QBLAZE_ERR_MEMORY;
     }
     let sim = unsafe { &mut *(sim as *mut crate::Simulator) };
-    sim.import_sparse(unsafe { slice::from_raw_parts(index_buffer, length) }, unsafe { slice::from_raw_parts(amp_buffer, length) });
+    sim.import_sparse(unsafe { slice::from_raw_parts(index_buffer, length * index_buffer_depth) }, unsafe { slice::from_raw_parts(amp_buffer, length) });
     if sim.is_error() {
         return QBLAZE_ERR_MEMORY;
     }

@@ -419,7 +419,7 @@ impl<const N: usize> StatevectorImpl<N> {
             p[elt.bits.get(qi) as usize] += elt.val.norm2();
         }
         for (rv, v) in r.iter().zip(p.iter()) {
-            rv.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |rv| {
+            rv.try_update(Ordering::Relaxed, Ordering::Relaxed, |rv| {
                 Some((f64::from_bits(rv) + *v).to_bits())
             }).unwrap();
         }
@@ -891,10 +891,23 @@ impl<const N: usize> Statevector for StatevectorImpl<N> {
                     if !want_val(val) {
                         continue;
                     }
-                    unsafe { chunk.push_unchecked(sfree::Element {
-                        bits: BitSet::from_index(start +  (chunk_index_data[src_i] as usize)),
-                        val: *val,
-                    }) };
+
+                    // Here's where we step through the higher bits of the
+                    // state indices to build a BitSet
+                    let mut all_bits = BitSet::default();
+                    let mut walk = src_i;
+                    let index_depth = index_data.len() / amp_data.len();
+                    for i in 0..index_depth {
+                        all_bits.set_word64(i, chunk_index_data[walk]);
+                        walk += amp_data.len();
+                    }
+
+                    unsafe { 
+                        chunk.push_unchecked(sfree::Element {
+                            bits: all_bits,
+                            val: *val,
+                        })
+                    };
                 }
             });
         });

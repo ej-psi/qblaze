@@ -529,11 +529,9 @@ impl Simulator {
 
     /// Reset the state vector to the given sparse state.
     pub fn import_sparse(&mut self, index_values: &[u64], amp_values: &[Complex]) {
-        let max_qubit = self.ctx.init_max_qubit.max(if amp_values.len() < 2 {
-            Qubit::ZERO
-        } else {
-            Qubit::from_index((amp_values.len() - 1).ilog2() as usize)
-        });
+        let index_depth = index_values.len() / amp_values.len();
+        // Expand the state to fit the index lengths
+        let max_qubit = Qubit::from_index(index_depth * 64);
         self.state = statevector::new(max_qubit);
         self.state.import_sparse(&mut self.ctx, index_values, amp_values);
         self.sfree_queue.clear();

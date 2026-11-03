@@ -101,6 +101,13 @@ impl<const N: usize> BitSet<N> {
         }
     }
 
+    // Set the 64-bit word at position i with the value val
+    #[inline(always)]
+    pub fn set_word64(&mut self, i: usize, val: u64) {
+        let p = unsafe { self.0.get_unchecked_mut(i) };
+        *p = val;
+    }
+
     #[inline(always)]
     pub fn toggle(&mut self, i: BitIndex<N>) {
         let (i_word, i_shift) = i.split();

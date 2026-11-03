@@ -14,7 +14,6 @@ TESTS = [
     (2**20, [(2**20-4, 0.5), (2**20-3, -0.5j), (2**20-2, -0.5), (2**20-1, 0.5j)]),
 ]
 
-
 @pytest.mark.parametrize("n, values", TESTS)
 def test_import(n, values):
     state = numpy.zeros(n, dtype=numpy.complex128)
@@ -24,13 +23,35 @@ def test_import(n, values):
     sim.import_amplitudes(state)
     assert list(sim) == values
 
-@pytest.mark.parametrize("n, values", TESTS)
-def test_import(n, values):
-    index_buf = numpy.zeros(len(values), dtype=numpy.uint64)
-    amp_buf = numpy.zeros(len(values), dtype=numpy.complex128)
-    for index,(i, v) in enumerate(values):
-        index_buf[index] = i
-        amp_buf[index] = v
+
+TESTS_SPARSE = [
+    {0: 1j},
+    {1 << 63: 1j},
+    {1: 1j / 2**0.5, 5000: 1 / 2**0.5},
+    {2**20-4: 0.5, 2**20-3: -0.5j, 2**20-2: -0.5, 2**20-1: 0.5j},
+    {(123 << 100) | 1: -1.0},
+]
+
+def _sparse_state_dict_to_numpy(sparse_state):
+    # Convert a dict a sparse state vector, even for more than 64 quits
+    mask_64 = (1 << 64) - 1
+    max_qubits = max(1, int(max(sparse_state.keys())).bit_length())
+    index_buf = []
+    keys = numpy.array([int(k) for k in sparse_state.keys()], dtype=object)
+    mask64 = ~numpy.uint64(0)
+    for i in range((max_qubits // 64) + 1):
+        key_bits1 = (keys >> (i * 64))
+        key_bits1 &= mask64
+        key_bits2 = key_bits1.astype(numpy.uint64)
+        index_buf.append(key_bits2)
+    index_buf = numpy.array(index_buf)
+    amp_buf = numpy.array(list(sparse_state.values()), dtype=numpy.complex128)
+    return [index_buf,amp_buf]
+
+@pytest.mark.parametrize("values", TESTS_SPARSE)
+def test_import_sparse(values):
     sim = qblaze.Simulator()
-    sim.import_amplitudes_sparse([index_buf, amp_buf])
-    assert list(sim) == values
+    values_np_format = _sparse_state_dict_to_numpy(values)
+    sim.import_amplitudes_sparse(values_np_format)
+    sim.flush()
+    assert dict(sim) == values

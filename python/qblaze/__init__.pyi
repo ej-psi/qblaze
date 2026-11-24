@@ -381,16 +381,24 @@ class Simulator:
         """
         Import the state vector amplitudes from :code:`index_buffer`. Any existing state is discarded.
 
-        The 'i'th element is imported as the amplitude of basis state 'i',
-        where the basis value of the 'k'th qubit equals the 'k'th bit of 'i'.
+        The 'i'th element of amp_buffer is imported as the amplitude of the basis state
+        corresponding to the  'i'th column of index_buffer.
+
+        Indices longer than 64 bits may be imported by adding rows to index_buffer.
+        If index_buffer is 2-dimensional, then each row contains higher bits of each basis index,
+        shifted up by 64 bits per row.
 
         Example:
 
-            >>> index_buf = numpy.array([6, 600])
+            >>> index_buf = numpy.array([[6, 3],      # bits 0-63 of each index
+                                         [0, 1]])     # bits 64-127 of each index
             >>> amp_buf = numpy.array([0.7071067812, 0, -0.7071067812j])
             >>> sim.import_amplitudes_sparse(index_buf, amp_buf)
             >>> list(sim)
-            [(6, (0.7071067812+0j)), (600, (0-0.7071067812j))]
+            [(6, (0.7071067812+0j)), ((1 << 64) + 3, (0-0.7071067812j))]
+
+            # (which will actually print as:)
+            [(6, (0.7071067812+0j)), (18446744073709551619, (0-0.7071067812j))]
         """
 
     def state_len(self, /) -> int:
